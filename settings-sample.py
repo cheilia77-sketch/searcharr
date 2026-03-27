@@ -12,6 +12,7 @@ searcharr_language = "en-us"  # available: "en-us", "ru-ru"
 searcharr_start_command_aliases = ["start"]  # Override /start command
 searcharr_help_command_aliases = ["help"]  # Override /help command
 searcharr_users_command_aliases = ["users"]  # Override /users command
+searcharr_logout_command_aliases = ["logout"]  # Override /logout command
 
 # Telegram
 tgram_token = ""

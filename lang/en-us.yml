@@ -19,6 +19,9 @@ incorrect_pw: Incorrect password.
 auth_required: I don't seem to know you... Please authenticate with {commands} and then try again.
 admin_auth_required: You do not have admin permissions... Please authenticate with {commands} and then try again.
 main_menu_prompt: Choose a category using the buttons below.
+users_button: Active Users
+logout_button: Log Out
+logged_out: Authorization cleared. Use {commands} to sign in again.
 movie_button: Movie
 series_button: Series
 book_button: Book
@@ -68,13 +71,14 @@ make_admin_button: Make Admin
 remove_admin_button: Remove Admin
 done: Done
 listing_users_pagination: Listing Searcharr users {page_info}.
-help_sonarr: Use {series_commands} to add a series to Sonarr.
-help_radarr: Use {movie_commands} to add a movie to Radarr.
+help_sonarr: To add a series, use the `Series` button in the main menu or the commands {series_commands}.
+help_radarr: To add a movie, use the `Movie` button in the main menu or the commands {movie_commands}.
 no_features: Sorry, but all of my features are currently disabled.
-admin_help: Since you are an admin, you can also use {commands} to manage users.
+admin_help: As an admin, you can open the active users list with the `Active Users` button or the commands {commands}.
 readarr_disabled: Sorry, but book support is disabled.
 include_book_title_in_cmd: Please include the book title in the command, e.g. {commands}
 no_matching_books: Sorry, but I didn't find any matching books.
-help_readarr: Use {book_commands} to add a book to Readarr.
+help_readarr: To add a book, use the `Book` button in the main menu or the commands {book_commands}.
 no_metadata_profiles: "Error adding {kind}: no metadata profiles enabled for {app}! Please check your Searcharr configuration and try again."
 add_metadata_button: "Add Metadata: {metadata}"
+help_logout: To switch users or sign out, use the `Log Out` button or the commands {commands}.

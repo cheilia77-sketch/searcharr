@@ -3,7 +3,8 @@ services:
     container_name: searcharr
     build:
       context: .
-    image: cheilia77-sketch/searcharr:local
+    image: searcharr-local:2.0.0
+    pull_policy: never
     volumes:
       - ./data:/app/data
       - ./logs:/app/logs

@@ -19,6 +19,7 @@ from telegram import (
     InlineKeyboardMarkup,
     InputMediaPhoto,
     ReplyKeyboardMarkup,
+    ReplyKeyboardRemove,
 )
 from telegram.error import BadRequest
 from telegram.ext import (
@@ -398,10 +399,11 @@ class Searcharr(object):
                     logger.debug(f"Tag id [{t_id}] for forced Readarr tag [{t}]")
 
         self.conversations = {}
-        if not hasattr(settings, "searcharr_admin_password"):
+        admin_password = getattr(settings, "searcharr_admin_password", None)
+        if admin_password is None or not str(admin_password).strip():
             settings.searcharr_admin_password = uuid.uuid4().hex
             logger.warning(
-                f'No admin password detected. Please set one in settings.py (searcharr_admin_password="your admin password"). Using {settings.searcharr_admin_password} as the admin password for this session.'
+                f'No valid admin password detected. Please set one in settings.py (searcharr_admin_password="your admin password"). Using {settings.searcharr_admin_password} as the admin password for this session.'
             )
         if settings.searcharr_password == "":
             logger.warning(
@@ -422,8 +424,13 @@ class Searcharr(object):
             logger.warning(
                 'No searcharr_users_command_aliases setting found. Please add searcharr_users_command_aliases to settings.py (e.g. searcharr_users_command_aliases=["users"]. Defaulting to ["users"].'
             )
+        if not hasattr(settings, "searcharr_logout_command_aliases"):
+            settings.searcharr_logout_command_aliases = ["logout"]
+            logger.warning(
+                'No searcharr_logout_command_aliases setting found. Please add searcharr_logout_command_aliases to settings.py (e.g. searcharr_logout_command_aliases=["logout"]. Defaulting to ["logout"].'
+            )
 
-    def _menu_keyboard(self):
+    def _menu_keyboard(self, user_id=None):
         keyboard = []
         media_row = []
         if settings.radarr_enabled:
@@ -434,14 +441,38 @@ class Searcharr(object):
             media_row.append(self._xlate("book_button"))
         if media_row:
             keyboard.append(media_row)
+        action_row = []
+        auth_level = self._authenticated(user_id) if user_id is not None else False
+        if auth_level == 2:
+            action_row.append(self._xlate("users_button"))
+        if auth_level:
+            action_row.append(self._xlate("logout_button"))
+        if action_row:
+            keyboard.append(action_row)
         return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
     async def _send_main_menu(self, message, text_key="main_menu_prompt"):
         reply_kwargs = {}
-        reply_markup = self._menu_keyboard()
+        reply_markup = self._menu_keyboard(message.from_user.id)
         if reply_markup.keyboard:
             reply_kwargs["reply_markup"] = reply_markup
         await message.reply_text(self._xlate(text_key), **reply_kwargs)
+
+    async def _logout_user(self, message):
+        self._clear_user_state(message.from_user.id)
+        self._remove_user(message.from_user.id)
+        await message.reply_text(
+            self._xlate(
+                "logged_out",
+                commands=" OR ".join(
+                    [
+                        f"`/{c} <{self._xlate('password')}>`"
+                        for c in settings.searcharr_start_command_aliases
+                    ]
+                ),
+            ),
+            reply_markup=ReplyKeyboardRemove(),
+        )
 
     def _set_user_state(self, user_id, state):
         con, cur = self._get_con_cur()
@@ -568,8 +599,10 @@ class Searcharr(object):
 
     async def cmd_start(self, update, context):
         logger.debug(f"Received start cmd from [{update.message.from_user.username}]")
-        password = self._strip_entities(update.message)
-        if password and password == settings.searcharr_admin_password:
+        password = self._strip_entities(update.message).strip()
+        admin_password = str(settings.searcharr_admin_password).strip()
+        user_password = str(settings.searcharr_password)
+        if password and admin_password and password == admin_password:
             self._add_user(
                 id=update.message.from_user.id,
                 username=str(update.message.from_user.username),
@@ -586,7 +619,7 @@ class Searcharr(object):
                 update.message,
                 text_key="already_authenticated_menu",
             )
-        elif password == settings.searcharr_password:
+        elif password == user_password:
             self._add_user(
                 id=update.message.from_user.id,
                 username=str(update.message.from_user.username),
@@ -754,6 +787,8 @@ class Searcharr(object):
         movie_button = self._xlate("movie_button")
         series_button = self._xlate("series_button")
         book_button = self._xlate("book_button")
+        users_button = self._xlate("users_button")
+        logout_button = self._xlate("logout_button")
         if text == movie_button:
             if not settings.radarr_enabled:
                 await message.reply_text(self._xlate("radarr_disabled"))
@@ -771,6 +806,25 @@ class Searcharr(object):
                 await message.reply_text(self._xlate("readarr_disabled"))
                 return
             await self._prompt_for_title(message, "book")
+            return
+        if text == users_button:
+            if self._authenticated(message.from_user.id) != 2:
+                await message.reply_text(
+                    self._xlate(
+                        "admin_auth_required",
+                        commands=" OR ".join(
+                            [
+                                f"`/{c} <{self._xlate('admin_password')}>`"
+                                for c in settings.searcharr_start_command_aliases
+                            ]
+                        ),
+                    )
+                )
+                return
+            await self.cmd_users(update, context)
+            return
+        if text == logout_button:
+            await self._logout_user(message)
             return
 
         user_state = self._get_user_state(message.from_user.id)
@@ -866,6 +920,23 @@ class Searcharr(object):
                 text=reply_message,
                 reply_markup=reply_markup,
             )
+
+    async def cmd_logout(self, update, context):
+        logger.debug(f"Received logout cmd from [{update.message.from_user.username}]")
+        if not self._authenticated(update.message.from_user.id):
+            await update.message.reply_text(
+                self._xlate(
+                    "auth_required",
+                    commands=" OR ".join(
+                        [
+                            f"`/{c} <{self._xlate('password')}>`"
+                            for c in settings.searcharr_start_command_aliases
+                        ]
+                    ),
+                )
+            )
+            return
+        await self._logout_user(update.message)
 
     async def callback(self, update, context):
         query = update.callback_query
@@ -1877,6 +1948,13 @@ class Searcharr(object):
                     [f"/{c}" for c in settings.searcharr_users_command_aliases]
                 ),
             )
+        if auth_level:
+            resp += " " + self._xlate(
+                "help_logout",
+                commands=" OR ".join(
+                    [f"/{c}" for c in settings.searcharr_logout_command_aliases]
+                ),
+            )
 
         await update.message.reply_text(resp)
 
@@ -1913,6 +1991,9 @@ class Searcharr(object):
         for c in settings.searcharr_users_command_aliases:
             logger.debug(f"Registering [/{c}] as a users command")
             application.add_handler(CommandHandler(c, self.cmd_users))
+        for c in settings.searcharr_logout_command_aliases:
+            logger.debug(f"Registering [/{c}] as a logout command")
+            application.add_handler(CommandHandler(c, self.cmd_logout))
         application.add_handler(CallbackQueryHandler(self.callback))
         application.add_handler(
             MessageHandler(filters.TEXT & (~filters.COMMAND), self.handle_text_message)
