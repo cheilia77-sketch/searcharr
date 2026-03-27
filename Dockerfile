@@ -12,4 +12,4 @@ RUN python3 -m pip install --no-cache-dir --upgrade pip \
 
 COPY . /app
 
-CMD ["python3", "searcharr.py"]
+CMD ["python3", "searcharr.py", "-c"]
