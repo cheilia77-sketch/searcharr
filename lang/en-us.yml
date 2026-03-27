@@ -1,0 +1,80 @@
+language_ietf: en-us
+language_label: English
+
+movie: movie
+series: series
+season: season
+book: book
+title: title
+title_here: title here
+password: password
+admin_password: admin password
+admin_auth_success: Admin authentication successful. Use {commands} for commands.
+already_authenticated: You are already authenticated. Try {commands} for usage info.
+auth_successful: Authentication successful. Use {commands} for commands.
+auth_successful_menu: Authentication successful. Choose what you want to search for.
+admin_auth_success_menu: Admin authentication successful. Choose what you want to search for.
+already_authenticated_menu: You are already authenticated. Choose what you want to search for.
+incorrect_pw: Incorrect password.
+auth_required: I don't seem to know you... Please authenticate with {commands} and then try again.
+admin_auth_required: You do not have admin permissions... Please authenticate with {commands} and then try again.
+main_menu_prompt: Choose a category using the buttons below.
+movie_button: Movie
+series_button: Series
+book_button: Book
+prompt_movie_title: Send the movie title in a message.
+prompt_series_title: Send the series title in a message.
+prompt_book_title: Send the book title in a message.
+radarr_disabled: Sorry, but movie support is disabled.
+include_movie_title_in_cmd: Please include the movie title in the command, e.g. {commands}
+no_matching_movies: Sorry, but I didn't find any matching movies.
+no_matching_movie_suggest_series: Are you sure you're not looking for a series? Tap the "Series" button below to try a series search.
+sonarr_disabled: Sorry, but series support is disabled.
+include_series_title_in_cmd: Please include the series title in the command, e.g. {commands}
+no_matching_series: Sorry, but I didn't find any matching series.
+no_matching_series_suggest_movie: Are you sure you're not looking for a movie? Tap the "Movie" button below to try a movie search.
+no_users_found: Sorry, but I didn't find any users. That seems wrong...
+convo_not_found: I received your command, but I don't recognize the conversation. Please start again.
+search_canceled: Search canceled!
+no_root_folders: "Error adding {kind}: no root folders enabled for {app}! Please check your Searcharr configuration and try again."
+no_quality_profiles: "Error adding {kind}: no quality profiles enabled for {app}! Please check your Searcharr configuration and try again."
+no_language_profiles: "Error adding {kind}: no language profiles enabled for {app}! Please check your Searcharr configuration and try again."
+all_seasons: All Seasons
+first_season: First Season Only
+latest_season: Latest Season Only
+added: Successfully added {title}!
+unknown_error_adding: Unspecified error encountered while adding {kind}!
+removed_user: Successfully removed all access for user id [{user}]!
+unknown_error_removing_user: Unspecified error encountered while removing user id [{user}]!
+added_admin_access: Added admin access for user id [{user}]!
+unknown_error_adding_admin: Unspecified error encountered while adding admin access for user id [{user}]!
+removed_admin_access: Removed admin access for user id [{user}]!
+unknown_error_removing_admin: Unspecified error encountered while removing admin access for user id [{user}]!
+prev_button: < Prev
+next_button: Next >
+add_tag_button: "Add Tag: {tag}"
+finished_tagging_button: Finished Tagging
+monitor_button: Monitor {option}
+add_quality_button: "Add Quality: {quality}"
+add_language_button: "Add Language: {language}"
+add_path_button: Add to {path}
+add_button: Add {kind}!
+already_added_button: Already Added!
+cancel_search_button: Cancel Search
+add_series_anime_button: Add Series as Anime Type!
+unexpected_error: Something went wrong!
+remove_user_button: Remove
+make_admin_button: Make Admin
+remove_admin_button: Remove Admin
+done: Done
+listing_users_pagination: Listing Searcharr users {page_info}.
+help_sonarr: Use {series_commands} to add a series to Sonarr.
+help_radarr: Use {movie_commands} to add a movie to Radarr.
+no_features: Sorry, but all of my features are currently disabled.
+admin_help: Since you are an admin, you can also use {commands} to manage users.
+readarr_disabled: Sorry, but book support is disabled.
+include_book_title_in_cmd: Please include the book title in the command, e.g. {commands}
+no_matching_books: Sorry, but I didn't find any matching books.
+help_readarr: Use {book_commands} to add a book to Readarr.
+no_metadata_profiles: "Error adding {kind}: no metadata profiles enabled for {app}! Please check your Searcharr configuration and try again."
+add_metadata_button: "Add Metadata: {metadata}"
