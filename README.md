@@ -128,25 +128,41 @@ python3 searcharr.py
 
 ### Вариант с `docker compose`
 
-1. Создайте локальные каталоги:
+Этот вариант рассчитан на Linux-сервер.
 
-```powershell
-New-Item -ItemType Directory -Force data, logs
-Copy-Item settings-sample.py settings.py
+1. Склонируйте репозиторий и перейдите в каталог проекта:
+
+```bash
+git clone https://github.com/cheilia77-sketch/searcharr.git
+cd searcharr
 ```
 
-2. Отредактируйте `settings.py`.
-3. Проверьте volume-монты в `docker-compose.yml`.
-4. Запустите контейнер:
+2. Создайте локальные каталоги и файл настроек:
 
-```powershell
+```bash
+mkdir -p data logs
+cp settings-sample.py settings.py
+```
+
+3. Отредактируйте `settings.py`.
+4. При необходимости проверьте volume-монты в `docker-compose.yml`.
+5. Запустите контейнер:
+
+```bash
 docker compose up -d
 ```
 
 Для просмотра логов:
 
-```powershell
+```bash
 docker compose logs -f
+```
+
+Для обновления на сервере после изменений в репозитории:
+
+```bash
+git pull
+docker compose up -d --build
 ```
 
 ### Что должно быть смонтировано в контейнер
