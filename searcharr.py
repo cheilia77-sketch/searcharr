@@ -22,11 +22,11 @@ from telegram import (
 )
 from telegram.error import BadRequest
 from telegram.ext import (
-    Updater,
+    ApplicationBuilder,
     CommandHandler,
     CallbackQueryHandler,
     MessageHandler,
-    Filters,
+    filters,
 )
 
 from log import set_up_logger
@@ -35,7 +35,7 @@ import sonarr
 import readarr
 import settings
 
-__version__ = "3.2.2"
+__version__ = "2.0.0"
 
 DBPATH = os.path.join(os.path.dirname(os.path.realpath(__file__)), "data")
 DBFILE = "searcharr.db"
@@ -436,12 +436,12 @@ class Searcharr(object):
             keyboard.append(media_row)
         return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
-    def _send_main_menu(self, message, text_key="main_menu_prompt"):
+    async def _send_main_menu(self, message, text_key="main_menu_prompt"):
         reply_kwargs = {}
         reply_markup = self._menu_keyboard()
         if reply_markup.keyboard:
             reply_kwargs["reply_markup"] = reply_markup
-        message.reply_text(self._xlate(text_key), **reply_kwargs)
+        await message.reply_text(self._xlate(text_key), **reply_kwargs)
 
     def _set_user_state(self, user_id, state):
         con, cur = self._get_con_cur()
@@ -493,14 +493,16 @@ class Searcharr(object):
             logger.error(f"Error executing database query [{q}]: {e}")
             raise
 
-    def _prompt_for_title(self, message, kind):
+    async def _prompt_for_title(self, message, kind):
         user_id = message.from_user.id
         state = f"awaiting_{kind}_title"
         self._set_user_state(user_id, state)
-        message.reply_text(self._xlate(f"prompt_{kind}_title"))
+        await message.reply_text(self._xlate(f"prompt_{kind}_title"))
 
-    def _send_cross_suggestion(self, message, kind):
-        other_kind = "series" if kind == "movie" else "movie" if kind == "series" else None
+    async def _send_cross_suggestion(self, message, kind):
+        other_kind = (
+            "series" if kind == "movie" else "movie" if kind == "series" else None
+        )
         if not other_kind:
             return
         if other_kind == "series" and not settings.sonarr_enabled:
@@ -512,12 +514,12 @@ class Searcharr(object):
             resize_keyboard=True,
             one_time_keyboard=True,
         )
-        message.reply_text(
+        await message.reply_text(
             self._xlate(f"no_matching_{kind}_suggest_{other_kind}"),
             reply_markup=keyboard,
         )
 
-    def _search_and_show(self, kind, title, chat_id, username, context):
+    async def _search_and_show(self, kind, title, chat_id, username, context):
         if kind == "movie":
             results = self.radarr.lookup_movie(title)
         elif kind == "series":
@@ -543,7 +545,7 @@ class Searcharr(object):
             kind, r, cid, 0, len(results)
         )
         try:
-            context.bot.sendPhoto(
+            await context.bot.send_photo(
                 chat_id=chat_id,
                 photo=r["remotePoster"],
                 caption=reply_message,
@@ -554,7 +556,7 @@ class Searcharr(object):
                 logger.error(
                     f"Error sending photo [{r['remotePoster']}]: BadRequest: {e}. Attempting to send with default poster..."
                 )
-                context.bot.sendPhoto(
+                await context.bot.send_photo(
                     chat_id=chat_id,
                     photo="https://artworks.thetvdb.com/banners/images/missing/movie.jpg",
                     caption=reply_message,
@@ -564,7 +566,7 @@ class Searcharr(object):
                 raise
         return True
 
-    def cmd_start(self, update, context):
+    async def cmd_start(self, update, context):
         logger.debug(f"Received start cmd from [{update.message.from_user.username}]")
         password = self._strip_entities(update.message)
         if password and password == settings.searcharr_admin_password:
@@ -574,13 +576,13 @@ class Searcharr(object):
                 admin=1,
             )
             self._clear_user_state(update.message.from_user.id)
-            self._send_main_menu(
+            await self._send_main_menu(
                 update.message,
                 text_key="admin_auth_success_menu",
             )
         elif self._authenticated(update.message.from_user.id):
             self._clear_user_state(update.message.from_user.id)
-            self._send_main_menu(
+            await self._send_main_menu(
                 update.message,
                 text_key="already_authenticated_menu",
             )
@@ -590,17 +592,17 @@ class Searcharr(object):
                 username=str(update.message.from_user.username),
             )
             self._clear_user_state(update.message.from_user.id)
-            self._send_main_menu(
+            await self._send_main_menu(
                 update.message,
                 text_key="auth_successful_menu",
             )
         else:
-            update.message.reply_text(self._xlate("incorrect_pw"))
+            await update.message.reply_text(self._xlate("incorrect_pw"))
 
-    def cmd_book(self, update, context):
+    async def cmd_book(self, update, context):
         logger.debug(f"Received book cmd from [{update.message.from_user.username}]")
         if not self._authenticated(update.message.from_user.id):
-            update.message.reply_text(
+            await update.message.reply_text(
                 self._xlate(
                     "auth_required",
                     commands=" OR ".join(
@@ -613,12 +615,12 @@ class Searcharr(object):
             )
             return
         if not settings.readarr_enabled:
-            update.message.reply_text(self._xlate("readarr_disabled"))
+            await update.message.reply_text(self._xlate("readarr_disabled"))
             return
         title = self._strip_entities(update.message)
         if not len(title):
             x_title = self._xlate("title").title()
-            update.message.reply_text(
+            await update.message.reply_text(
                 self._xlate(
                     "include_book_title_in_cmd",
                     commands=" OR ".join(
@@ -631,19 +633,19 @@ class Searcharr(object):
             )
             return
         self._clear_user_state(update.message.from_user.id)
-        if not self._search_and_show(
+        if not await self._search_and_show(
             "book",
             title,
             update.message.chat.id,
             update.message.from_user.username,
             context,
         ):
-            update.message.reply_text(self._xlate("no_matching_books"))
+            await update.message.reply_text(self._xlate("no_matching_books"))
 
-    def cmd_movie(self, update, context):
+    async def cmd_movie(self, update, context):
         logger.debug(f"Received movie cmd from [{update.message.from_user.username}]")
         if not self._authenticated(update.message.from_user.id):
-            update.message.reply_text(
+            await update.message.reply_text(
                 self._xlate(
                     "auth_required",
                     commands=" OR ".join(
@@ -656,12 +658,12 @@ class Searcharr(object):
             )
             return
         if not settings.radarr_enabled:
-            update.message.reply_text(self._xlate("radarr_disabled"))
+            await update.message.reply_text(self._xlate("radarr_disabled"))
             return
         title = self._strip_entities(update.message)
         if not len(title):
             x_title = self._xlate("title").title()
-            update.message.reply_text(
+            await update.message.reply_text(
                 self._xlate(
                     "include_movie_title_in_cmd",
                     commands=" OR ".join(
@@ -674,20 +676,20 @@ class Searcharr(object):
             )
             return
         self._clear_user_state(update.message.from_user.id)
-        if not self._search_and_show(
+        if not await self._search_and_show(
             "movie",
             title,
             update.message.chat.id,
             update.message.from_user.username,
             context,
         ):
-            update.message.reply_text(self._xlate("no_matching_movies"))
-            self._send_cross_suggestion(update.message, "movie")
+            await update.message.reply_text(self._xlate("no_matching_movies"))
+            await self._send_cross_suggestion(update.message, "movie")
 
-    def cmd_series(self, update, context):
+    async def cmd_series(self, update, context):
         logger.debug(f"Received series cmd from [{update.message.from_user.username}]")
         if not self._authenticated(update.message.from_user.id):
-            update.message.reply_text(
+            await update.message.reply_text(
                 self._xlate(
                     "auth_required",
                     commands=" OR ".join(
@@ -700,12 +702,12 @@ class Searcharr(object):
             )
             return
         if not settings.sonarr_enabled:
-            update.message.reply_text(self._xlate("sonarr_disabled"))
+            await update.message.reply_text(self._xlate("sonarr_disabled"))
             return
         title = self._strip_entities(update.message)
         if not len(title):
             x_title = self._xlate("title").title()
-            update.message.reply_text(
+            await update.message.reply_text(
                 self._xlate(
                     "include_series_title_in_cmd",
                     commands=" OR ".join(
@@ -718,24 +720,24 @@ class Searcharr(object):
             )
             return
         self._clear_user_state(update.message.from_user.id)
-        if not self._search_and_show(
+        if not await self._search_and_show(
             "series",
             title,
             update.message.chat.id,
             update.message.from_user.username,
             context,
         ):
-            update.message.reply_text(self._xlate("no_matching_series"))
-            self._send_cross_suggestion(update.message, "series")
+            await update.message.reply_text(self._xlate("no_matching_series"))
+            await self._send_cross_suggestion(update.message, "series")
 
-    def handle_text_message(self, update, context):
+    async def handle_text_message(self, update, context):
         message = update.message
         logger.debug(f"Received text message from [{message.from_user.username}]")
         if not message or not message.text:
             return
 
         if not self._authenticated(message.from_user.id):
-            message.reply_text(
+            await message.reply_text(
                 self._xlate(
                     "auth_required",
                     commands=" OR ".join(
@@ -754,67 +756,67 @@ class Searcharr(object):
         book_button = self._xlate("book_button")
         if text == movie_button:
             if not settings.radarr_enabled:
-                message.reply_text(self._xlate("radarr_disabled"))
+                await message.reply_text(self._xlate("radarr_disabled"))
                 return
-            self._prompt_for_title(message, "movie")
+            await self._prompt_for_title(message, "movie")
             return
         if text == series_button:
             if not settings.sonarr_enabled:
-                message.reply_text(self._xlate("sonarr_disabled"))
+                await message.reply_text(self._xlate("sonarr_disabled"))
                 return
-            self._prompt_for_title(message, "series")
+            await self._prompt_for_title(message, "series")
             return
         if text == book_button:
             if not settings.readarr_enabled:
-                message.reply_text(self._xlate("readarr_disabled"))
+                await message.reply_text(self._xlate("readarr_disabled"))
                 return
-            self._prompt_for_title(message, "book")
+            await self._prompt_for_title(message, "book")
             return
 
         user_state = self._get_user_state(message.from_user.id)
         if user_state == "awaiting_movie_title":
             self._clear_user_state(message.from_user.id)
-            if not self._search_and_show(
+            if not await self._search_and_show(
                 "movie",
                 text,
                 message.chat.id,
                 message.from_user.username,
                 context,
             ):
-                message.reply_text(self._xlate("no_matching_movies"))
-                self._send_cross_suggestion(message, "movie")
+                await message.reply_text(self._xlate("no_matching_movies"))
+                await self._send_cross_suggestion(message, "movie")
             return
         if user_state == "awaiting_series_title":
             self._clear_user_state(message.from_user.id)
-            if not self._search_and_show(
+            if not await self._search_and_show(
                 "series",
                 text,
                 message.chat.id,
                 message.from_user.username,
                 context,
             ):
-                message.reply_text(self._xlate("no_matching_series"))
-                self._send_cross_suggestion(message, "series")
+                await message.reply_text(self._xlate("no_matching_series"))
+                await self._send_cross_suggestion(message, "series")
             return
         if user_state == "awaiting_book_title":
             self._clear_user_state(message.from_user.id)
-            if not self._search_and_show(
+            if not await self._search_and_show(
                 "book",
                 text,
                 message.chat.id,
                 message.from_user.username,
                 context,
             ):
-                message.reply_text(self._xlate("no_matching_books"))
+                await message.reply_text(self._xlate("no_matching_books"))
             return
 
-        self._send_main_menu(message)
+        await self._send_main_menu(message)
 
-    def cmd_users(self, update, context):
+    async def cmd_users(self, update, context):
         logger.debug(f"Received users cmd from [{update.message.from_user.username}]")
         auth_level = self._authenticated(update.message.from_user.id)
         if not auth_level:
-            update.message.reply_text(
+            await update.message.reply_text(
                 self._xlate(
                     "auth_required",
                     commands=" OR ".join(
@@ -827,7 +829,7 @@ class Searcharr(object):
             )
             return
         elif auth_level != 2:
-            update.message.reply_text(
+            await update.message.reply_text(
                 self._xlate(
                     "admin_auth_required",
                     commands=" OR ".join(
@@ -850,7 +852,7 @@ class Searcharr(object):
             results=results,
         )
         if not len(results):
-            update.message.reply_text(self._xlate("no_users_found"))
+            await update.message.reply_text(self._xlate("no_users_found"))
         else:
             reply_message, reply_markup = self._prepare_response_users(
                 cid,
@@ -859,20 +861,20 @@ class Searcharr(object):
                 5,
                 len(results),
             )
-            context.bot.sendMessage(
+            await context.bot.send_message(
                 chat_id=update.message.chat.id,
                 text=reply_message,
                 reply_markup=reply_markup,
             )
 
-    def callback(self, update, context):
+    async def callback(self, update, context):
         query = update.callback_query
         logger.debug(
             f"Received callback from [{query.from_user.username}]: [{query.data}]"
         )
         auth_level = self._authenticated(query.from_user.id)
         if not auth_level:
-            query.message.reply_text(
+            await query.message.reply_text(
                 self._xlate(
                     "auth_required",
                     commands=" OR ".join(
@@ -883,20 +885,20 @@ class Searcharr(object):
                     ),
                 )
             )
-            query.message.delete()
-            query.answer()
+            await query.message.delete()
+            await query.answer()
             return
 
         if not query.data or not len(query.data):
-            query.answer()
+            await query.answer()
             return
 
         convo = self._get_conversation(query.data.split("^^^")[0])
         # convo = self.conversations.get(query.data.split("^^^")[0])
         if not convo:
-            query.message.reply_text(self._xlate("convo_not_found"))
-            query.message.delete()
-            query.answer()
+            await query.message.reply_text(self._xlate("convo_not_found"))
+            await query.message.delete()
+            await query.answer()
             return
 
         cid, i, op = query.data.split("^^^")
@@ -914,23 +916,23 @@ class Searcharr(object):
         elif op == "cancel":
             self._delete_conversation(cid)
             # self.conversations.pop(cid)
-            query.message.reply_text(self._xlate("search_canceled"))
-            query.message.delete()
+            await query.message.reply_text(self._xlate("search_canceled"))
+            await query.message.delete()
         elif op == "done":
             self._delete_conversation(cid)
             # self.conversations.pop(cid)
-            query.message.delete()
+            await query.message.delete()
         elif op == "prev":
             if convo["type"] in ["series", "movie", "book"]:
                 if i <= 0:
-                    query.answer()
+                    await query.answer()
                     return
                 r = convo["results"][i - 1]
                 reply_message, reply_markup = self._prepare_response(
                     convo["type"], r, cid, i - 1, len(convo["results"])
                 )
                 try:
-                    query.message.edit_media(
+                    await query.message.edit_media(
                         media=InputMediaPhoto(r["remotePoster"]),
                         reply_markup=reply_markup,
                     )
@@ -939,7 +941,7 @@ class Searcharr(object):
                         logger.error(
                             f"Error sending photo [{r['remotePoster']}]: BadRequest: {e}. Attempting to send with default poster..."
                         )
-                        query.message.edit_media(
+                        await query.message.edit_media(
                             media=InputMediaPhoto(
                                 "https://artworks.thetvdb.com/banners/images/missing/movie.jpg"
                             ),
@@ -947,8 +949,8 @@ class Searcharr(object):
                         )
                     else:
                         raise
-                query.bot.edit_message_caption(
-                    chat_id=query.message.chat_id,
+                await query.bot.edit_message_caption(
+                    chat_id=query.message.chat.id,
                     message_id=query.message.message_id,
                     caption=reply_message,
                     reply_markup=reply_markup,
@@ -963,7 +965,7 @@ class Searcharr(object):
                     5,
                     len(convo["results"]),
                 )
-                context.bot.edit_message_text(
+                await context.bot.edit_message_text(
                     chat_id=query.message.chat.id,
                     message_id=query.message.message_id,
                     text=reply_message,
@@ -972,7 +974,7 @@ class Searcharr(object):
         elif op == "next":
             if convo["type"] in ["series", "movie", "book"]:
                 if i >= len(convo["results"]):
-                    query.answer()
+                    await query.answer()
                     return
                 r = convo["results"][i + 1]
                 logger.debug(f"{r=}")
@@ -980,7 +982,7 @@ class Searcharr(object):
                     convo["type"], r, cid, i + 1, len(convo["results"])
                 )
                 try:
-                    query.message.edit_media(
+                    await query.message.edit_media(
                         media=InputMediaPhoto(r["remotePoster"]),
                         reply_markup=reply_markup,
                     )
@@ -989,7 +991,7 @@ class Searcharr(object):
                         logger.error(
                             f"Error sending photo [{r['remotePoster']}]: BadRequest: {e}. Attempting to send with default poster..."
                         )
-                        query.message.edit_media(
+                        await query.message.edit_media(
                             media=InputMediaPhoto(
                                 "https://artworks.thetvdb.com/banners/images/missing/movie.jpg"
                             ),
@@ -997,15 +999,15 @@ class Searcharr(object):
                         )
                     else:
                         raise
-                query.bot.edit_message_caption(
-                    chat_id=query.message.chat_id,
+                await query.bot.edit_message_caption(
+                    chat_id=query.message.chat.id,
                     message_id=query.message.message_id,
                     caption=reply_message,
                     reply_markup=reply_markup,
                 )
             elif convo["type"] == "users":
                 if i > len(convo["results"]):
-                    query.answer()
+                    await query.answer()
                     return
                 reply_message, reply_markup = self._prepare_response_users(
                     cid,
@@ -1014,7 +1016,7 @@ class Searcharr(object):
                     5,
                     len(convo["results"]),
                 )
-                context.bot.edit_message_text(
+                await context.bot.edit_message_text(
                     chat_id=query.message.chat.id,
                     message_id=query.message.message_id,
                     text=reply_message,
@@ -1045,7 +1047,7 @@ class Searcharr(object):
                         paths=paths,
                     )
                     try:
-                        query.message.edit_media(
+                        await query.message.edit_media(
                             media=InputMediaPhoto(r["remotePoster"]),
                             reply_markup=reply_markup,
                         )
@@ -1054,7 +1056,7 @@ class Searcharr(object):
                             logger.error(
                                 f"Error sending photo [{r['remotePoster']}]: BadRequest: {e}. Attempting to send with default poster..."
                             )
-                            query.message.edit_media(
+                            await query.message.edit_media(
                                 media=InputMediaPhoto(
                                     "https://artworks.thetvdb.com/banners/images/missing/movie.jpg"
                                 ),
@@ -1062,13 +1064,13 @@ class Searcharr(object):
                             )
                         else:
                             raise
-                    query.bot.edit_message_caption(
-                        chat_id=query.message.chat_id,
+                    await query.bot.edit_message_caption(
+                        chat_id=query.message.chat.id,
                         message_id=query.message.message_id,
                         caption=reply_message,
                         reply_markup=reply_markup,
                     )
-                    query.answer()
+                    await query.answer()
                     return
                 elif len(paths) == 1:
                     logger.debug(
@@ -1077,7 +1079,7 @@ class Searcharr(object):
                     self._update_add_data(cid, "p", paths[0]["path"])
                 else:
                     self._delete_conversation(cid)
-                    query.message.reply_text(
+                    await query.message.reply_text(
                         self._xlate(
                             "no_root_folders",
                             kind=self._xlate(convo["type"]),
@@ -1090,8 +1092,8 @@ class Searcharr(object):
                             else "???",
                         )
                     )
-                    query.message.delete()
-                    query.answer()
+                    await query.message.delete()
+                    await query.answer()
                     return
             else:
                 try:
@@ -1135,7 +1137,7 @@ class Searcharr(object):
                         quality_profiles=quality_profiles,
                     )
                     try:
-                        query.message.edit_media(
+                        await query.message.edit_media(
                             media=InputMediaPhoto(r["remotePoster"]),
                             reply_markup=reply_markup,
                         )
@@ -1144,7 +1146,7 @@ class Searcharr(object):
                             logger.error(
                                 f"Error sending photo [{r['remotePoster']}]: BadRequest: {e}. Attempting to send with default poster..."
                             )
-                            query.message.edit_media(
+                            await query.message.edit_media(
                                 media=InputMediaPhoto(
                                     "https://artworks.thetvdb.com/banners/images/missing/movie.jpg"
                                 ),
@@ -1152,13 +1154,13 @@ class Searcharr(object):
                             )
                         else:
                             raise
-                    query.bot.edit_message_caption(
-                        chat_id=query.message.chat_id,
+                    await query.bot.edit_message_caption(
+                        chat_id=query.message.chat.id,
                         message_id=query.message.message_id,
                         caption=reply_message,
                         reply_markup=reply_markup,
                     )
-                    query.answer()
+                    await query.answer()
                     return
                 elif len(quality_profiles) == 1:
                     logger.debug(
@@ -1167,7 +1169,7 @@ class Searcharr(object):
                     self._update_add_data(cid, "q", quality_profiles[0]["id"])
                 else:
                     self._delete_conversation(cid)
-                    query.message.reply_text(
+                    await query.message.reply_text(
                         self._xlate(
                             "no_quality_profiles",
                             kind=self._xlate(convo["type"]),
@@ -1178,8 +1180,8 @@ class Searcharr(object):
                             else "Readarr",
                         )
                     )
-                    query.message.delete()
-                    query.answer()
+                    await query.message.delete()
+                    await query.answer()
                     return
 
             if convo["type"] == "book" and not additional_data.get("m"):
@@ -1196,7 +1198,7 @@ class Searcharr(object):
                         metadata_profiles=metadata_profiles,
                     )
                     try:
-                        query.message.edit_media(
+                        await query.message.edit_media(
                             media=InputMediaPhoto(r["remotePoster"]),
                             reply_markup=reply_markup,
                         )
@@ -1205,7 +1207,7 @@ class Searcharr(object):
                             logger.error(
                                 f"Error sending photo [{r['remotePoster']}]: BadRequest: {e}. Attempting to send with default poster..."
                             )
-                            query.message.edit_media(
+                            await query.message.edit_media(
                                 media=InputMediaPhoto(
                                     "https://artworks.thetvdb.com/banners/images/missing/movie.jpg"
                                 ),
@@ -1213,13 +1215,13 @@ class Searcharr(object):
                             )
                         else:
                             raise
-                    query.bot.edit_message_caption(
-                        chat_id=query.message.chat_id,
+                    await query.bot.edit_message_caption(
+                        chat_id=query.message.chat.id,
                         message_id=query.message.message_id,
                         caption=reply_message,
                         reply_markup=reply_markup,
                     )
-                    query.answer()
+                    await query.answer()
                     return
                 elif len(metadata_profiles) == 1:
                     logger.debug(
@@ -1228,7 +1230,7 @@ class Searcharr(object):
                     self._update_add_data(cid, "m", metadata_profiles[0]["id"])
                 else:
                     self._delete_conversation(cid)
-                    query.message.reply_text(
+                    await query.message.reply_text(
                         self._xlate(
                             "no_metadata_profiles",
                             kind=self._xlate(convo["type"]),
@@ -1239,8 +1241,8 @@ class Searcharr(object):
                             else "Readarr",
                         )
                     )
-                    query.message.delete()
-                    query.answer()
+                    await query.message.delete()
+                    await query.answer()
                     return
 
             if (
@@ -1265,7 +1267,7 @@ class Searcharr(object):
                     monitor_options=monitor_options,
                 )
                 try:
-                    query.message.edit_media(
+                    await query.message.edit_media(
                         media=InputMediaPhoto(r["remotePoster"]),
                         reply_markup=reply_markup,
                     )
@@ -1274,7 +1276,7 @@ class Searcharr(object):
                         logger.error(
                             f"Error sending photo [{r['remotePoster']}]: BadRequest: {e}. Attempting to send with default poster..."
                         )
-                        query.message.edit_media(
+                        await query.message.edit_media(
                             media=InputMediaPhoto(
                                 "https://artworks.thetvdb.com/banners/images/missing/movie.jpg"
                             ),
@@ -1282,13 +1284,13 @@ class Searcharr(object):
                         )
                     else:
                         raise
-                query.bot.edit_message_caption(
-                    chat_id=query.message.chat_id,
+                await query.bot.edit_message_caption(
+                    chat_id=query.message.chat.id,
                     message_id=query.message.message_id,
                     caption=reply_message,
                     reply_markup=reply_markup,
                 )
-                query.answer()
+                await query.answer()
                 return
 
             if convo["type"] == "series":
@@ -1328,7 +1330,7 @@ class Searcharr(object):
                         tags=all_tags,
                     )
                     try:
-                        query.message.edit_media(
+                        await query.message.edit_media(
                             media=InputMediaPhoto(r["remotePoster"]),
                             reply_markup=reply_markup,
                         )
@@ -1337,7 +1339,7 @@ class Searcharr(object):
                             logger.error(
                                 f"Error sending photo [{r['remotePoster']}]: BadRequest: {e}. Attempting to send with default poster..."
                             )
-                            query.message.edit_media(
+                            await query.message.edit_media(
                                 media=InputMediaPhoto(
                                     "https://artworks.thetvdb.com/banners/images/missing/movie.jpg"
                                 ),
@@ -1345,13 +1347,13 @@ class Searcharr(object):
                             )
                         else:
                             raise
-                    query.bot.edit_message_caption(
-                        chat_id=query.message.chat_id,
+                    await query.bot.edit_message_caption(
+                        chat_id=query.message.chat.id,
                         message_id=query.message.message_id,
                         caption=reply_message,
                         reply_markup=reply_markup,
                     )
-                    query.answer()
+                    await query.answer()
                     return
                 else:
                     tag_ids = (
@@ -1428,15 +1430,15 @@ class Searcharr(object):
             logger.debug(f"Result of attempt to add {convo['type']}: {added}")
             if added:
                 self._delete_conversation(cid)
-                query.message.reply_text(self._xlate("added", title=r["title"]))
-                query.message.delete()
+                await query.message.reply_text(self._xlate("added", title=r["title"]))
+                await query.message.delete()
             else:
-                query.message.reply_text(
+                await query.message.reply_text(
                     self._xlate("unknown_error_adding", kind=convo["type"])
                 )
         elif op == "remove_user":
             if auth_level != 2:
-                query.message.reply_text(
+                await query.message.reply_text(
                     self._xlate(
                         "admin_auth_required",
                         commands=" OR ".join(
@@ -1447,16 +1449,16 @@ class Searcharr(object):
                         ),
                     )
                 )
-                query.message.delete()
-                query.answer()
+                await query.message.delete()
+                await query.answer()
                 return
             try:
                 self._remove_user(i)
-                # query.message.reply_text(
+                # await query.message.reply_text(
                 #    f"Successfully removed all access for user id [{i}]!"
                 # )
                 # self._delete_conversation(cid)
-                # query.message.delete()
+                # await query.message.delete()
                 convo.update({"results": self._get_users()})
                 self._create_conversation(
                     id=cid,
@@ -1471,7 +1473,7 @@ class Searcharr(object):
                     5,
                     len(convo["results"]),
                 )
-                context.bot.edit_message_text(
+                await context.bot.edit_message_text(
                     chat_id=query.message.chat.id,
                     message_id=query.message.message_id,
                     text=f"{self._xlate('removed_user', user=i)} {reply_message}",
@@ -1479,12 +1481,12 @@ class Searcharr(object):
                 )
             except Exception as e:
                 logger.error(f"Error removing all access for user id [{i}]: {e}")
-                query.message.reply_text(
+                await query.message.reply_text(
                     self._xlate("unknown_error_removing_user", user=i)
                 )
         elif op == "make_admin":
             if auth_level != 2:
-                query.message.reply_text(
+                await query.message.reply_text(
                     self._xlate(
                         "admin_auth_required",
                         commands=" OR ".join(
@@ -1495,14 +1497,14 @@ class Searcharr(object):
                         ),
                     )
                 )
-                query.message.delete()
-                query.answer()
+                await query.message.delete()
+                await query.answer()
                 return
             try:
                 self._update_admin_access(i, 1)
-                # query.message.reply_text(f"Added admin access for user id [{i}]!")
+                # await query.message.reply_text(f"Added admin access for user id [{i}]!")
                 # self._delete_conversation(cid)
-                # query.message.delete()
+                # await query.message.delete()
                 convo.update({"results": self._get_users()})
                 self._create_conversation(
                     id=cid,
@@ -1517,7 +1519,7 @@ class Searcharr(object):
                     5,
                     len(convo["results"]),
                 )
-                context.bot.edit_message_text(
+                await context.bot.edit_message_text(
                     chat_id=query.message.chat.id,
                     message_id=query.message.message_id,
                     text=f"{self._xlate('added_admin_access', user=i)} {reply_message}",
@@ -1525,12 +1527,12 @@ class Searcharr(object):
                 )
             except Exception as e:
                 logger.error(f"Error adding admin access for user id [{i}]: {e}")
-                query.message.reply_text(
+                await query.message.reply_text(
                     self._xlate("unknown_error_adding_admin", user=i)
                 )
         elif op == "remove_admin":
             if auth_level != 2:
-                query.message.reply_text(
+                await query.message.reply_text(
                     self._xlate(
                         "admin_auth_required",
                         commands=" OR ".join(
@@ -1541,14 +1543,14 @@ class Searcharr(object):
                         ),
                     )
                 )
-                query.message.delete()
-                query.answer()
+                await query.message.delete()
+                await query.answer()
                 return
             try:
                 self._update_admin_access(i, "")
-                # query.message.reply_text(f"Removed admin access for user id [{i}]!")
+                # await query.message.reply_text(f"Removed admin access for user id [{i}]!")
                 # self._delete_conversation(cid)
-                # query.message.delete()
+                # await query.message.delete()
                 convo.update({"results": self._get_users()})
                 self._create_conversation(
                     id=cid,
@@ -1563,7 +1565,7 @@ class Searcharr(object):
                     5,
                     len(convo["results"]),
                 )
-                context.bot.edit_message_text(
+                await context.bot.edit_message_text(
                     chat_id=query.message.chat.id,
                     message_id=query.message.message_id,
                     text=f"{self._xlate('removed_admin_access', user=i)} {reply_message}",
@@ -1571,11 +1573,11 @@ class Searcharr(object):
                 )
             except Exception as e:
                 logger.error(f"Error removing admin access for user id [{i}]: {e}")
-                query.message.reply_text(
+                await query.message.reply_text(
                     self._xlate("unknown_error_removing_admin", user=i)
                 )
 
-        query.answer()
+        await query.answer()
 
     def _prepare_response(
         self,
@@ -1800,18 +1802,19 @@ class Searcharr(object):
         )
         return (reply_message, reply_markup)
 
-    def handle_error(self, update, context):
+    async def handle_error(self, update, context):
         logger.error(f"Caught error: {context.error}")
         try:
-            update.callback_query.answer()
+            if update and getattr(update, "callback_query", None):
+                await update.callback_query.answer()
         except Exception:
             pass
 
-    def cmd_help(self, update, context):
+    async def cmd_help(self, update, context):
         logger.debug(f"Received help cmd from [{update.message.from_user.username}]")
         auth_level = self._authenticated(update.message.from_user.id)
         if not auth_level:
-            update.message.reply_text(
+            await update.message.reply_text(
                 self._xlate(
                     "auth_required",
                     commands=" OR ".join(
@@ -1875,7 +1878,7 @@ class Searcharr(object):
                 ),
             )
 
-        update.message.reply_text(resp)
+        await update.message.reply_text(resp)
 
     def _strip_entities(self, message):
         text = message.text
@@ -1889,40 +1892,39 @@ class Searcharr(object):
 
     def run(self):
         self._init_db()
-        updater = Updater(self.token, use_context=True)
+        application = ApplicationBuilder().token(self.token).build()
 
         for c in settings.searcharr_help_command_aliases:
             logger.debug(f"Registering [/{c}] as a help command")
-            updater.dispatcher.add_handler(CommandHandler(c, self.cmd_help))
+            application.add_handler(CommandHandler(c, self.cmd_help))
         for c in settings.searcharr_start_command_aliases:
             logger.debug(f"Registering [/{c}] as a start command")
-            updater.dispatcher.add_handler(CommandHandler(c, self.cmd_start))
+            application.add_handler(CommandHandler(c, self.cmd_start))
         if self.readarr:
             for c in settings.readarr_book_command_aliases:
                 logger.debug(f"Registering [/{c}] as a book command")
-                updater.dispatcher.add_handler(CommandHandler(c, self.cmd_book))
+                application.add_handler(CommandHandler(c, self.cmd_book))
         for c in settings.radarr_movie_command_aliases:
             logger.debug(f"Registering [/{c}] as a movie command")
-            updater.dispatcher.add_handler(CommandHandler(c, self.cmd_movie))
+            application.add_handler(CommandHandler(c, self.cmd_movie))
         for c in settings.sonarr_series_command_aliases:
             logger.debug(f"Registering [/{c}] as a series command")
-            updater.dispatcher.add_handler(CommandHandler(c, self.cmd_series))
+            application.add_handler(CommandHandler(c, self.cmd_series))
         for c in settings.searcharr_users_command_aliases:
             logger.debug(f"Registering [/{c}] as a users command")
-            updater.dispatcher.add_handler(CommandHandler(c, self.cmd_users))
-        updater.dispatcher.add_handler(CallbackQueryHandler(self.callback))
-        updater.dispatcher.add_handler(
-            MessageHandler(Filters.text & (~Filters.command), self.handle_text_message)
+            application.add_handler(CommandHandler(c, self.cmd_users))
+        application.add_handler(CallbackQueryHandler(self.callback))
+        application.add_handler(
+            MessageHandler(filters.TEXT & (~filters.COMMAND), self.handle_text_message)
         )
         if not self.DEV_MODE:
-            updater.dispatcher.add_error_handler(self.handle_error)
+            application.add_error_handler(self.handle_error)
         else:
             logger.info(
                 "Developer mode is enabled; skipping registration of error handler--exceptions will be raised."
             )
 
-        updater.start_polling()
-        updater.idle()
+        application.run_polling()
 
     def _create_conversation(self, id, username, kind, results):
         con, cur = self._get_con_cur()
@@ -2235,13 +2237,13 @@ class Searcharr(object):
         logger.debug(f"Attempting to load language file: lang/{lang_ietf}.yml...")
         try:
             with open(f"lang/{lang_ietf}.yml", mode="r", encoding="utf-8") as y:
-                lang = yaml.load(y, Loader=yaml.SafeLoader)
+                lang = yaml.safe_load(y) or {}
         except FileNotFoundError:
             logger.error(
                 f"Error loading lang/{lang_ietf}.yml. Confirm searcharr_language in settings.py has a corresponding yml file in the lang subdirectory. Using default (English) language file."
             )
-            with open("lang/en-us.yml", "r") as y:
-                lang = yaml.load(y, Loader=yaml.SafeLoader)
+            with open("lang/en-us.yml", "r", encoding="utf-8") as y:
+                lang = yaml.safe_load(y) or {}
         return lang
 
     def _xlate(self, key, **kwargs):

@@ -17,6 +17,8 @@ def set_up_logger(logger_name, verbose, console):
 
     logger = logging.getLogger(logger_name)
     logger.setLevel(logging.DEBUG if verbose else logging.INFO)
+    if logger.handlers:
+        return logger
 
     formatter = logging.Formatter(
         "%(asctime)s - %(levelname)8s - %(name)s(%(thread)s):%(lineno)d - %(message)s"
@@ -32,7 +34,11 @@ def set_up_logger(logger_name, verbose, console):
     if not os.path.exists(logPath):
         os.makedirs(logPath)
     fh = TimedRotatingFileHandler(
-        os.path.join(logPath, fileName), when="midnight", interval=1, backupCount=7
+        os.path.join(logPath, fileName),
+        when="midnight",
+        interval=1,
+        backupCount=7,
+        encoding="utf-8",
     )
     fh.setFormatter(formatter)
     logger.addHandler(fh)

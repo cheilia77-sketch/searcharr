@@ -11,19 +11,21 @@ from urllib.parse import quote
 
 from log import set_up_logger
 
+REQUEST_TIMEOUT = 30
+
 
 class Sonarr(object):
     def __init__(self, api_url, api_key, verbose=False):
         self.logger = set_up_logger("searcharr.sonarr", verbose, False)
         self.logger.debug("Logging started!")
-        if api_url[-1] == "/":
-            api_url = api_url[:-1]
-        if api_url[:4] != "http":
+        api_url = (api_url or "").rstrip("/")
+        if not api_url.startswith("http"):
             self.logger.error(
                 "Invalid Sonarr URL detected. Please update your settings to include http:// or https:// on the beginning of the URL."
             )
+        self.api_url = api_url + "/api/v3/{endpoint}?apikey=" + api_key
         self.sonarr_version = self.discover_version(api_url, api_key)
-        if not self.sonarr_version.startswith("4."):
+        if self.sonarr_version and not self.sonarr_version.startswith("4."):
             self.api_url = api_url + "/api/{endpoint}?apikey=" + api_key
         self._quality_profiles = self.get_all_quality_profiles()
         self._root_folders = self.get_root_folders()
@@ -268,24 +270,28 @@ class Sonarr(object):
             None,
         )
 
-    def _api_get(self, endpoint, params={}):
+    def _api_get(self, endpoint, params=None):
+        params = params or {}
         url = self.api_url.format(endpoint=endpoint)
         for k, v in params.items():
             url += f"&{k}={v}"
         self.logger.debug(f"Submitting GET request: [{url}]")
-        r = requests.get(url)
+        r = requests.get(url, timeout=REQUEST_TIMEOUT)
         if r.status_code not in [200, 201, 202, 204]:
             r.raise_for_status()
             return None
-        else:
-            return r.json()
+        if r.status_code == 204 or not r.content:
+            return None
+        return r.json()
 
-    def _api_post(self, endpoint, params={}):
+    def _api_post(self, endpoint, params=None):
+        params = params or {}
         url = self.api_url.format(endpoint=endpoint)
         self.logger.debug(f"Submitting POST request: [{url}]; params: [{params}]")
-        r = requests.post(url, json=params)
+        r = requests.post(url, json=params, timeout=REQUEST_TIMEOUT)
         if r.status_code not in [200, 201, 202, 204]:
             r.raise_for_status()
             return None
-        else:
-            return r.json()
+        if r.status_code == 204 or not r.content:
+            return None
+        return r.json()

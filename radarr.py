@@ -10,20 +10,22 @@ from urllib.parse import quote
 
 from log import set_up_logger
 
+REQUEST_TIMEOUT = 30
+
 
 class Radarr(object):
     def __init__(self, api_url, api_key, verbose=False):
         self.logger = set_up_logger("searcharr.radarr", verbose, False)
         self.logger.debug("Logging started!")
-        if api_url[-1] == "/":
-            api_url = api_url[:-1]
-        if api_url[:4] != "http":
+        api_url = (api_url or "").rstrip("/")
+        if not api_url.startswith("http"):
             self.logger.error(
                 "Invalid Radarr URL detected. Please update your settings to include http:// or https:// on the beginning of the URL."
             )
+        self.api_url = api_url + "/api/v3/{endpoint}?apikey=" + api_key
         self.radarr_version = self.discover_version(api_url, api_key)
-        if not self.radarr_version.startswith("0."):
-            self.api_url = api_url + "/api/v3/{endpoint}?apikey=" + api_key
+        if self.radarr_version and self.radarr_version.startswith("0."):
+            self.api_url = api_url + "/api/{endpoint}?apikey=" + api_key
         self._quality_profiles = self.get_all_quality_profiles()
         self._root_folders = self.get_root_folders()
 
@@ -139,17 +141,19 @@ class Radarr(object):
             for x in r
         ]
 
-    def _api_get(self, endpoint, params={}):
+    def _api_get(self, endpoint, params=None):
+        params = params or {}
         url = self.api_url.format(endpoint=endpoint)
         for k, v in params.items():
             url += f"&{k}={v}"
         self.logger.debug(f"Submitting GET request: [{url}]")
-        r = requests.get(url)
+        r = requests.get(url, timeout=REQUEST_TIMEOUT)
         if r.status_code not in [200, 201, 202, 204]:
             r.raise_for_status()
             return None
-        else:
-            return r.json()
+        if r.status_code == 204 or not r.content:
+            return None
+        return r.json()
 
     def get_all_tags(self):
         r = self._api_get("tag", {})
@@ -234,12 +238,14 @@ class Radarr(object):
             None,
         )
 
-    def _api_post(self, endpoint, params={}):
+    def _api_post(self, endpoint, params=None):
+        params = params or {}
         url = self.api_url.format(endpoint=endpoint)
         self.logger.debug(f"Submitting POST request: [{url}]; params: [{params}]")
-        r = requests.post(url, json=params)
+        r = requests.post(url, json=params, timeout=REQUEST_TIMEOUT)
         if r.status_code not in [200, 201, 202, 204]:
             r.raise_for_status()
             return None
-        else:
-            return r.json()
+        if r.status_code == 204 or not r.content:
+            return None
+        return r.json()
