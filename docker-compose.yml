@@ -1,4 +1,3 @@
-version: '3.0'
 services:
   searcharr:
     container_name: searcharr
@@ -13,4 +12,9 @@ services:
       - TZ=Europe/Moscow
     restart: unless-stopped
     networks:
-      - arr_bridge
+      - bronet
+
+networks:
+  bronet:
+    external: true
+    name: bronet
