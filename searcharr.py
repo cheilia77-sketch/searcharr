@@ -7,6 +7,7 @@ https://github.com/toddrob99/searcharr
 import argparse
 import json
 import os
+import unicodedata
 import yaml
 import sqlite3
 from threading import Lock
@@ -474,6 +475,19 @@ class Searcharr(object):
             reply_markup=ReplyKeyboardRemove(),
         )
 
+    def _normalize_password(self, value):
+        if value is None:
+            return ""
+        normalized = unicodedata.normalize("NFKC", str(value))
+        normalized = normalized.replace("\u200b", "").replace("\ufeff", "").strip()
+        if (
+            len(normalized) >= 2
+            and normalized[0] == normalized[-1]
+            and normalized[0] in ['"', "'", "`"]
+        ):
+            normalized = normalized[1:-1].strip()
+        return normalized
+
     def _set_user_state(self, user_id, state):
         con, cur = self._get_con_cur()
         q = "INSERT OR REPLACE INTO user_state (user_id, state) VALUES (?, ?);"
@@ -599,10 +613,13 @@ class Searcharr(object):
 
     async def cmd_start(self, update, context):
         logger.debug(f"Received start cmd from [{update.message.from_user.username}]")
-        password = self._strip_entities(update.message).strip()
-        admin_password = str(settings.searcharr_admin_password).strip()
-        user_password = str(settings.searcharr_password)
+        password = self._normalize_password(self._strip_entities(update.message))
+        admin_password = self._normalize_password(settings.searcharr_admin_password)
+        user_password = self._normalize_password(settings.searcharr_password)
         if password and admin_password and password == admin_password:
+            logger.info(
+                f"Admin authentication successful for user [{update.message.from_user.id}]"
+            )
             self._add_user(
                 id=update.message.from_user.id,
                 username=str(update.message.from_user.username),
@@ -620,6 +637,9 @@ class Searcharr(object):
                 text_key="already_authenticated_menu",
             )
         elif password == user_password:
+            logger.info(
+                f"User authentication successful for user [{update.message.from_user.id}]"
+            )
             self._add_user(
                 id=update.message.from_user.id,
                 username=str(update.message.from_user.username),
@@ -630,6 +650,15 @@ class Searcharr(object):
                 text_key="auth_successful_menu",
             )
         else:
+            logger.warning(
+                "Authentication failed for user [%s]: provided_len=%s admin_len=%s user_len=%s admin_match=%s user_match=%s",
+                update.message.from_user.id,
+                len(password),
+                len(admin_password),
+                len(user_password),
+                bool(password and admin_password and password == admin_password),
+                bool(password == user_password),
+            )
             await update.message.reply_text(self._xlate("incorrect_pw"))
 
     async def cmd_book(self, update, context):
