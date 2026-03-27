@@ -14,8 +14,3 @@ services:
     restart: unless-stopped
     networks:
       - arr_bridge
-
-networks:
-  arr_bridge:
-    external: true
-    name: arr_bridge
